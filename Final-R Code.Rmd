@@ -1,0 +1,830 @@
+---
+title: "Final Paper"
+author: "STOR 320.01 Group 17"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(modelr)
+library(broom)
+library(purrr)
+library(ggplot2)
+
+library(ggpubr)
+library(sf)
+library(rnaturalearth)
+library(raster)
+library(geodata)
+library(highcharter)
+library(plotly)
+library(ggalt)
+library(CGPfunctions)
+library(modelr)
+#Put Necessary Libraries Here
+```
+
+```{r, include = FALSE}
+life <- read_csv(file = "lifeexpectancy.csv")
+treecover1 <- read_csv(file = "treecover1.csv")
+agriculture <- read_csv(file = "yield.csv")
+iso <- read_csv(file = "iso.csv")
+fao1 <- read_csv(file = "fao1.csv")
+fao2 <- read_csv(file = "fao2.csv")
+meat <- read_csv(file = "meat.csv")
+urban <- read_csv(file = "urban.csv")
+gdp <- read_csv(file="gdp.csv")
+population <- read_csv(file = "population.csv")
+```
+
+```{r, include = FALSE}
+life1 <- merge(population, life)
+```
+
+```{r, include = FALSE}
+agriculture1 <- agriculture %>%
+  select("Domain", "Area", "Item","Year", "Unit", "Value") %>%
+  group_by(Year, Area) %>% 
+  summarise(ExpansionSum = sum(Value), .groups = 'keep')
+```
+
+```{r, include = FALSE}
+agriculture2 <- agriculture1 %>%
+  rename("country" = Area)
+merging <- merge(agriculture2, iso)
+```
+
+```{r, include = FALSE}
+together <- merging %>%
+  select("country", "Year", "ExpansionSum","iso3") %>%
+  rename("iso" = iso3)
+```
+
+```{r, include = FALSE}
+treecover <- treecover1 %>%
+  rename("Year" = umd_tree_cover_loss__year)
+```
+
+```{r, include = FALSE}
+merging3 <- merge(together, treecover)
+head(merging3)
+```
+
+```{r, include = FALSE}
+merging3 <- merging3 %>%
+  rename("Country" = "country") 
+```
+
+```{r, include = FALSE}
+ merging4 <- merging3 %>%
+  rename("Treeloss" = "umd_tree_cover_loss__ha")  %>%
+  rename("Co2emissions" = "gfw_gross_emissions_co2e_all_gases__Mg")
+```
+
+```{r, include = FALSE}
+TreeLoss <- merging4 %>%
+  group_by(Year,Country) %>% 
+  summarise(Treeloss = sum(Treeloss), .groups = 'keep')
+
+Co2emissions <- merging4 %>%
+  group_by(Year,Country) %>% 
+  summarise(Co2emissions = sum(Co2emissions), .groups = 'keep')
+
+meat1 <- meat %>%
+  rename("Country" = "Entity") %>%
+  rename("Meatvalue" = "Meat, total | 00001765 || Production | 005510 || tonnes") %>% 
+  group_by(Year,Country) %>% 
+  summarise(Meatsum = sum(Meatvalue), .groups = 'keep')
+
+
+FAO <- rbind(fao1, fao2) %>%
+  .[,c(4,8,10,11,12)]
+
+FAO_grouped <- FAO %>%
+  rename("Country" = "Area") %>%
+  split(FAO$Unit)
+
+FAO_Volume <- FAO_grouped[[1]] %>%
+  .[,-4]
+
+FAO_Ton <- FAO_grouped[[2]]  %>%
+  .[,-4]
+
+FAO_Volume_sum <- FAO_Volume %>% 
+  group_by(Year,Country) %>% 
+  summarise(Forest_Volumesum = sum(Value), .groups = 'keep')
+
+FAO_Ton_sums <- FAO_Ton %>% 
+  group_by(Year, Country) %>% 
+  summarise(Forest_Tonsum = sum(Value), .groups = 'keep')
+
+```
+
+```{r, include = FALSE}
+merging5 <- merge(merging4, meat1)
+```
+
+```{r, include = FALSE}
+merging6 <- merge(merging5, TreeLoss)
+```
+
+```{r, include = FALSE}
+merging7 <- merge(merging6, Co2emissions)
+```
+
+```{r, include = FALSE}
+merge8 <- merge(merging7, FAO_Ton_sums)
+```
+
+```{r, include = FALSE}
+merge9 <- merge(merge8, FAO_Volume_sum)
+```
+
+```{r, include = FALSE}
+urban1 <- urban %>%
+  rename("Country" = "Economy Label") %>%
+  rename("UrbanPop" = "Absolute value in thousands") %>%
+  rename("Urban%" = "Urban population as percentage of total population") %>%
+  select(-"Economy", -"Absolute value in thousands Missing value", -"Urban population as percentage of total population Missing value") %>%
+  mutate(
+    UrbanPop = as.numeric(UrbanPop),
+    `Urban%` = as.numeric(`Urban%`)
+  )
+```
+```{r, include = FALSE}
+life3 <- life1 %>%
+  rename("Country" = "Country Name")
+```
+```{r, include = FALSE}
+merge10 <- merge(life3, merge9) 
+```
+
+```{r, include = FALSE}
+merge11 <- merge(merge10, urban1)
+```
+
+```{r, include = FALSE}
+filtered_GDP = gdp %>%
+
+  select(-starts_with("19"))
+
+reshaped_GDP <- filtered_GDP %>%
+
+  pivot_longer(cols = starts_with("20"),
+
+               names_to = "year",      
+
+               values_to = "value")
+gdpfinal <- reshaped_GDP %>%
+  rename("Country" = "country_name") %>%
+  rename("Year" = "year") %>%
+  rename("GDP growth %" = "value") %>%
+  select(-"indicator_name")
+```
+
+```{r, include = FALSE}
+merge12 <- merge(merge11, gdpfinal) %>%
+  select(-iso, -Count)  %>%
+  rename("GDP" = "GDP growth %")  %>%
+  rename("Expectancy" = "Life Expectancy World Bank")
+```
+
+```{r, include = FALSE}
+model_data <- merge12%>%
+  select(c(17:25))
+data_clean <- na.omit(model_data)
+```
+
+```{r, include = FALSE}
+`Full Model - 8 Variables`=lm(Treeloss~.,data=data_clean)
+```
+```{r, include = FALSE}
+mod2=lm(Treeloss~Co2emissions+ExpansionSum+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`,data = data_clean)
+```
+```{r, include = FALSE}
+mod3=lm(Treeloss~Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`,data = data_clean)
+
+```
+
+
+```{r, include = FALSE}
+#full model
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ .,data=data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% 
+  crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+full.MAE = MAE.func(crossed_2$.resid)
+full.RMSE = RMSE.func(crossed_2$.resid)
+
+```
+
+```{r, include = FALSE}
+`Cleaned P-value Model - 6 Variables`=lm(Treeloss~Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`,data = data_clean)
+
+`CO2 Model -  1`=lm(Treeloss~ Co2emissions,data=data_clean)
+
+`Meatsum -  1`=lm(Treeloss~ Meatsum,data=data_clean)
+
+`Forest_ton -  1`=lm(Treeloss~ Forest_Tonsum,data=data_clean)
+
+`Forest_vol -  1`=lm(Treeloss~ Forest_Volumesum,data=data_clean)
+
+`Urban_pop -  1`=lm(Treeloss~ UrbanPop,data=data_clean)
+
+`Urban_% -  1`=lm(Treeloss~ `Urban%`,data=data_clean)
+
+#`Three Predictor Model` = lm(Forest_Volumesum+UrbanPop+`Urban%`,data = data_clean)
+```
+
+```{r, include = FALSE}
+#mod3
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`,data = data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+mod3.MAE = MAE.func(crossed_2$.resid)
+mod3.RMSE = RMSE.func(crossed_2$.resid)
+
+```
+
+
+```{r, include = FALSE}
+#mod4
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ Co2emissions,data=data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+mod4.MAE = MAE.func(crossed_2$.resid)
+mod4.RMSE = RMSE.func(crossed_2$.resid)
+
+```
+
+```{r, include = FALSE}
+#mod5
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ Meatsum,data=data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+mod5.MAE = MAE.func(crossed_2$.resid)
+mod5.RMSE = RMSE.func(crossed_2$.resid)
+```
+
+```{r, include = FALSE}
+#mod6
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ Forest_Tonsum,data=data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+mod6.MAE = MAE.func(crossed_2$.resid)
+mod6.RMSE = RMSE.func(crossed_2$.resid)
+```
+
+```{r, include = FALSE}
+#mod7
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ Forest_Volumesum,data=data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+mod7.MAE = MAE.func(crossed_2$.resid)
+mod7.RMSE = RMSE.func(crossed_2$.resid)
+```
+
+```{r, include = FALSE}
+#mod8
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ UrbanPop,data=data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+mod8.MAE = MAE.func(crossed_2$.resid)
+mod8.RMSE = RMSE.func(crossed_2$.resid)
+```
+
+```{r, include = FALSE}
+#mod9
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ `Urban%`,data=data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+mod9.MAE = MAE.func(crossed_2$.resid)
+mod9.RMSE = RMSE.func(crossed_2$.resid)
+```
+
+```{r, include = FALSE}
+# Construct a table with RMSE & MAE values
+
+vector1 <- c("Full Model - 8 Variables", "Cleaned P-value Model - 6 Variables","CO2 Model", "Meatsum Model", "Forest_ton Model", "Forest_vol Model", "Urban_pop Model", "Urban_% Model")
+vector2 <- c(full.MAE, mod3.MAE, mod4.MAE, mod5.MAE, mod6.MAE, mod7.MAE, mod8.MAE, mod9.MAE)
+vector3 <- c(full.RMSE, mod3.RMSE, mod4.RMSE, mod5.RMSE, mod6.RMSE, mod7.RMSE, mod8.RMSE, mod9.RMSE)
+
+combined_table <- tibble(
+  Model = vector1,
+  MAE = vector2,  
+  RMSE = vector3   
+)
+
+```
+
+
+```{r, include = FALSE}
+#Backward elimination
+data_clean <- na.omit(model_data)
+# Fit the full model
+lm.model=lm(Treeloss~ .,data=data_clean)
+# Find the RMSE for the full model
+RMSE = (summary(lm.model)$sigma)^2
+# Backward: use the step( ) function starting with the full model
+step(lm.model,scale = RMSE)
+```
+
+```{r, include = FALSE}
+mod_new2=lm(Treeloss~ Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`,data = data_clean)
+
+mod_int=lm(Treeloss~ Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`+ I(Co2emissions*Meatsum)+I(Co2emissions*UrbanPop)+I(Co2emissions*Forest_Tonsum),data = data_clean)
+
+```
+```{r, include = FALSE}
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`+ I(Co2emissions*Meatsum)+ I(Co2emissions*UrbanPop) +I(Co2emissions*Forest_Tonsum),data = data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+mod_int.MAE = MAE.func(crossed_2$.resid)
+mod_int.RMSE = RMSE.func(crossed_2$.resid)
+mod_int.MAE
+mod_int.RMSE
+
+```
+
+```{r, include = FALSE}
+# int 1 mse & mae
+`Interaction Model 1` = lm(Treeloss~ Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`+ I(Co2emissions*Meatsum),data=data_clean)
+
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`+ I(Co2emissions*Meatsum),data = data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+mod_int1.MAE = MAE.func(crossed_2$.resid)
+mod_int1.RMSE = RMSE.func(crossed_2$.resid)
+
+```
+
+```{r, include = FALSE}
+# int 2 mse & mae
+`Interaction Model 2` = lm(Treeloss~ Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`+ I(Co2emissions*Meatsum)+ I(Co2emissions*UrbanPop),data=data_clean)
+
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`+ I(Co2emissions*Meatsum)+ I(Co2emissions*UrbanPop),data = data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+mod_int2.MAE = MAE.func(crossed_2$.resid)
+mod_int2.RMSE = RMSE.func(crossed_2$.resid)
+```
+
+```{r, include = FALSE}
+# int 3 rmse & mae
+`Interaction Model 3` = lm(Treeloss~ Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`+ I(Co2emissions*Meatsum)+ I(Co2emissions*UrbanPop) +I(Co2emissions*Forest_Tonsum),data=data_clean)
+
+lm.func = function(data_clean){
+  mod=lm(Treeloss~ Co2emissions+Meatsum+Forest_Tonsum+Forest_Volumesum+UrbanPop+`Urban%`+ I(Co2emissions*Meatsum)+ I(Co2emissions*UrbanPop) +I(Co2emissions*Forest_Tonsum),data = data_clean)
+  return (mod)
+}
+
+crossed=na.omit(data_clean) %>% crossv_kfold(10)
+
+crossed_1 = crossed %>% 
+       mutate(tr.model=map(train,lm.func))
+
+crossed_2 = crossed_1 %>% 
+          mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>%
+          select(predict) %>%
+          unnest()
+
+MAE.func=function(residual){
+  mae=mean(abs(residual),na.rm=T)
+  return(mae)
+}
+
+RMSE.func=function(residual){
+  rmse=sqrt(mean((residual)^2,na.rm=T))
+  return(rmse)
+}
+
+mod_int3.MAE = MAE.func(crossed_2$.resid)
+mod_int3.RMSE = RMSE.func(crossed_2$.resid)
+```
+# INTRODUCTION
+
+Deforestation stands as one of the most severe environmental crises facing our planet today. Ten thousand years ago, forests covered 71% of Earth's terrain, totalling 10.6 billion hectares. Now, more than half of this land has been used for agriculture and urban expansion, decreasing the total land area covered by forests to 4.1 billion hectares. To put this forest loss into perspective, an area equivalent to 27 soccer fields is deforested every minute (United Nations, 2020). Forests act as “carbon sinks”, playing a crucial role in carbon sequestration. When deforestation occurs, carbon storage capacity is lost, and the stored carbon is released back into the atmosphere, accounting for nearly 10% of annual greenhouse gas emissions (Climate Council, 2021). In addition to exacerbating global warming, deforestation threatens nearly 2 billion individuals that rely on forests for their livelihoods, 250 million direct forest inhabitants, and approximately 80% of Earth’s wildlife. (National Geographic, 2021).
+
+Global deforestation raises the first question of our analysis: What factors are most significant in predicting global deforestation rates? Understanding the significant predictors of deforestation across different countries, each with their specific environmental and socio-economic landscapes, will highlight critical trends that could help develop conservation strategies.
+
+Over 59% of global deforestation takes place in the Amazon Rainforest, also referred to as the "Earth’s lungs." This vast biome, spanning Brazil, Venezuela, Colombia, Peru, Ecuador, Bolivia, Guyana, Suriname, and French Guiana, stores 120 tons of carbon. However, human activities and natural fires have devastated more than 20% of the Amazon, resulting in an additional billion tonnes of carbon dioxide emissions every year. This emission level rivals that of Japan, the world's fifth largest polluter. Scientists have warned for decades the depletion of the Amazon and its resources will severely impact global ecosystem resilience and the 400 indigenous tribes that call the rainforest home (Vox, 2023). 
+
+Our second key question looks to further analyze the human-life impacts: How does deforestation affect quality of life in Latin America and the Caribbean? Analyzing how deforestation impacts life expectancy will highlight the impacts on humans. This analysis can be used to convey the urgency of deforestation in Latin America and the Caribbean and to a global audience and encourage policies that promote decreasing deforestation.
+
+# DATA
+
+Our global deforestation data was sourced from the Global Forest Watch (GFW), an open-source web application that allows for near real-time monitoring of forests worldwide. Developed by the World Resources Institute, GFW collaborates with a diverse group of partners, including Google, USAID, and the University of Maryland. The data was collected using satellites and cloud computing, spans from years 2002 to 2023, and includes all 195 countries. It has 14,382 observations and the relevant variables we used were the **Year**, the **Country**, Forest Loss, and **Carbon Emissions**. Forest Loss, our **deforestation** variable, is expressed in terms of hectares of forest space cleared in a given year. Below is a map of the worldwide distribution of deforestation data. 
+```{r, include = FALSE}
+library(maps)
+```
+```{r, include = FALSE, warning=FALSE}
+life1 <- life1 %>%
+  rename("Country" = "Country Name") %>%
+  rename("Code" = "Country Code") %>%
+  mutate(Country = ifelse(Country == "United States", "USA", Country))
+```
+```{r, include = FALSE,warning=FALSE}
+treecover2 <- treecover1 %>%
+  rename("Code" = "iso") %>%
+  rename("Year" = "umd_tree_cover_loss__year") %>%
+  rename("treeloss" = "umd_tree_cover_loss__ha") %>%
+  mutate(treeloss = treeloss / 10) 
+```
+
+```{r, include = FALSE, warning=FALSE}
+map_merge <- merge(treecover2, life1)
+
+map_merge <- map_merge %>%
+  select("Year", "Code", "treeloss", "Country", "IncomeGroup", "Life Expectancy World Bank", "CO2" ) %>%
+  rename("expectancy" = "Life Expectancy World Bank")
+```
+```{r, echo=FALSE, warning=FALSE}
+world_map <- map("world", exact = FALSE, plot = FALSE, fill = TRUE)
+world_map <- world_map %>%
+  st_as_sf() %>%
+  rename(Country = "ID")
+
+
+world_data <- merge(world_map, 
+                     map_merge,
+                     by = "Country",
+                     all.x = TRUE)
+
+p <- ggplot() +
+  geom_sf(data = world_data,
+          aes(fill = treeloss, text = paste("Country: ", Country, "<br>Treeloss: ", treeloss)),
+          colour = "white") +
+  scale_fill_gradient(low = "skyblue",
+                      high = "navyblue",
+                      name = "Deforestation") +
+  theme_minimal()+
+  ggtitle("World Deforestation Map")
+
+ggplotly(p, tooltip = "text")
+```
+
+To determine the most significant predictors for Forest Loss or Deforestation, we merged new datasets to include specific predictor variables.  
+
+**agriculture expansion**: We found this dataset on Kaggle. The information pertains to predicting crop yield total production from the years 1990 to 2016 in every country. The variables used are Year, Country, Value, and Unit, with the unit being kilograms.
+**meat production**: We found this dataset on Kaggle, which was originally sourced from the World Bank and last updated four years ago. It represents global meat production by country and year, covering the period from 1991 to 2019.
+**forestry production in tons** and **forestry production volume**:  We found the dataset from the Food and Organization of the United Nations. Both variables measure all types of production items from trees and forests, the difference is that one is measured in weight and the other is in volume.
+**urban population**: we found a world population dataset off of kaggle from worldometer containing this variable. This variable represents the total urban population for each year for each country starting in 1955. 
+
+**urban population percentage**: we found a world population dataset off of kaggle from worldometer. This variable represents the urban population percentage for each year for each country starting in 1955. 
+
+Our next data set which includes variables that indicate the quality-of-life in different countries was found on Kaggle. However, the actual data included was sourced from the World Bank Open Data Site. The data set covers the years 2000 to 2019 and has values for all 195 countries. The key variables that we focused on include **Year**, **Country**, and **Average life expectancy**. Below is a map of the worldwide distribution of Life Expectancy data. 
+
+```{r, echo=FALSE, warning=FALSE}
+world_map <- map("world", exact = FALSE, plot = FALSE, fill = TRUE)
+world_map <- world_map %>%
+  st_as_sf() %>%
+  rename(Country = "ID")
+
+
+world_data <- merge(world_map, 
+                     map_merge,
+                     by = "Country",
+                     all.x = TRUE)
+
+p <- ggplot() +
+  geom_sf(data = world_data,
+          aes(fill = expectancy, text = paste("Country: ", Country, "<br>Expectancy: ", expectancy)),
+          colour = "white") +
+  scale_fill_gradient(low = "skyblue",
+                      high = "navyblue",
+                      name = "Life Expectancy") +
+  theme_minimal()+
+  ggtitle("World Life Expectancy Map")
+
+ggplotly(p, tooltip = "text")
+```
+Below is a snapshot of our finalized dataset:
+```{r, echo=FALSE, warning=FALSE}
+library(kableExtra)
+table_data <- head(merge12, 6) %>% select(c(1,2,6, 17:25))
+ table_data%>%
+  kbl() %>%
+  kable_material(c("striped", "hover"))
+```
+
+
+# RESULTS
+
+```{r, echo=FALSE, warning=FALSE}
+library(kableExtra)
+# Updating the table
+vector1 <- c("Full Model - 8 Variables", "Cleaned P-value Model - 6 Variables","CO2 Model", "Meatsum Model", "Forest_ton Model", "Forest_vol Model", "Urban_pop Model", "Urban_% Model", "Interaction Model 1", "Interaction Model 2", "Interaction Model 3")
+vector2 <- c(full.MAE, mod3.MAE, mod4.MAE, mod5.MAE, mod6.MAE, mod7.MAE, mod8.MAE, mod9.MAE, mod_int1.MAE, mod_int2.MAE, mod_int3.MAE)
+vector3 <- c(full.RMSE, mod3.RMSE, mod4.RMSE, mod5.RMSE, mod6.RMSE, mod7.RMSE, mod8.RMSE, mod9.RMSE, mod_int1.RMSE, mod_int2.RMSE, mod_int3.RMSE)
+
+combined_table_int <- tibble(
+  Model = vector1,
+  MAE = vector2,  
+  RMSE = vector3   
+)
+ combined_table_int%>%
+  kbl() %>%
+  kable_material(c("striped", "hover"))
+```
+
+
+We want to find a set of predictor variables that best predict **deforestation** across countries. We found that **carbon emissions**, **agriculture expansion**, **meat production**, **forestry production**, **urban population**, and **GDP growth** could be possible predictors of **deforestation**. Our initial model is a linear model that predicts **deforestation** using all of the potential variables as predictors. To evaluate the effectiveness of this model we created a summary of the model and decided to remove any predictors that were not significant/ had a p-value of above 0.05. This led to us removing the **agriculture expansion** which had a p-value of 0.368998 and **GDP growth** which had a p-value of 0.882071. This is our cleaned model based on p-values.
+
+Full Model = Deforestation ~ carbon emissions + agriculture expansion + meat production + forestry production in volume + forestry production in ton + urban population + urban population percentage + GDP growth
+
+Cleaned Model by P-value = Deforestation ~ carbon emissions + meat production + forestry production in volume + forestry production in ton + urban population + urban population percentage 
+
+To test the different combinations of variables in our model construction, we started with the cleaned model and also constructed unique single variable models one at a time. We created single variable models to see if one single predictor would be more effective than a combination of multiple. To measure the performance of each model, we decided to perform a 10-fold cross validation to measure the out-of-sample error using RMSE (Root Mean Squared Error) and MAE (Mean Absolute Error). Cross validation would allow us to use all our data in both train and test dataset to reduce biases and overfitting. While both metrics measure the average magnitude of error, RMSE weights high errors due to outliers, while MAE weights errors relatively equal. We believe the combination of two metrics best help us to understand the performance of prediction accuracy in general and in terms of outlier countries.
+
+To see what would be the best model we also used the model selection method; backwards elimination to see which predictors would be best at predicting **deforestation** based on AIC. AIC is a statistic that measures how well a model fits the given data. Backward elimination begins with a full model of all the predictors from a data set and one by one removes predictors to lower the AIC. The AIC of the full model was 9. After removing **GDP growth** the AIC was then 7.02. The backwards elimination process finally chose to remove **agriculture expansion** lowering the AIC to 5.82. Both our first process of removing predictors based on their p-value and backward elimination gave us the linear model of using **carbon emissions**, **meat production**, **forestry production in tons**, **forestry production volume**, **urban population**, and **urban population percentage**. 
+
+Backward Elimination Model = Deforestation ~ carbon emissions + meat production + forestry production in volume + forestry production in ton + urban population + urban population percentage
+
+To even aim for improvements on the model above, we decided to add interaction terms to the model above. We made one model with an interaction term between **carbon emissions** and **meat production**. Our second interaction model had interaction terms between **carbon emissions** and **meat production** and another interaction term between **carbon emissions** and **urban population**. Our third interaction model had interaction terms between **carbon emissions** and **meat production** and another interaction term between **carbon emissions** and **urban population** and another interaction term between **carbon emissions** and **forestry production** in tons. 
+
+Interaction Model 1 = Deforestation ~ carbon emissions + meat production + forestry production in volume + forestry production in ton + urban population + urban population percentage +I(carbon emissions*meat production)
+
+Interaction Model 2 = Deforestation ~ carbon emissions + meat production + forestry production in volume + forestry production in ton + urban population + urban population percentage + I(carbon emissions*meat production) + I(carbon emissions*urban population)
+
+Interaction Model 3 = Deforestation ~ carbon emissions + meat production + forestry production in volume + forestry production in ton + urban population + urban population percentage + I(carbon emissions*meat production) + I(carbon emissions*urban population) + I(carbon emissions*forestry production)
+
+Below is a table showing the two metrics on each model. We found that the Interactive Model 2 has relatively low MAE and RMSE values compared to other models. A low MAE value means the absolute difference between the predicted values and actual values are low on average, meaning a better prediction. Similarly, the RMSE is also lower indicating a more accurate prediction. While the Interactive Model 3 also has a slightly lower MAE value, we chose the model with 2 interaction terms as it has a lower RMSE value, meaning it is better in predicting all countries, and with those outlier countries that might give us higher errors in prediction. We also preferred the relative simplicity of the two interaction terms model over more interaction terms.
+
+
+```{r, echo=FALSE, warning=FALSE}
+# With 3 interaction models
+
+# Compare the MAE using a line graph
+MAE_graph <- ggplot(combined_table_int, aes(x = Model, y = MAE, fill = Model)) +
+   geom_col() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+labs(title="MAE By Different Models", x="Models",y="MAE")
+MAE_graph 
+
+# Compare the MAE using a line graph
+RMSE_graph <- ggplot(combined_table_int, aes(x = Model, y = RMSE, fill = Model)) +
+   geom_col()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+labs(title="RMSE By Different Models", x="Models",y="RMSE")
+RMSE_graph
+```
+
+
+Reflecting on our modeling exploration process, we found that the three interaction models perform better than single-variable models and cleaned p-value model in terms of relatively low MAE and RMSE values. Better performance in incorporating interaction terms means that interconnections between our predictor variables contribute to the prediction of deforestation. We therefore conclude that **deforestation** is a complex issue that is influenced by interrelated forces between different socioeconomic factors and aspects of human activity. Additionally, out of the non-interaction models, although we are not surprised by the adequate performance of our cleaned model, we are surprised to see the **carbon emissions** model is doing relatively well in predicting deforestation, according to the metric table and bar chart. Thus, we conclude that **carbon emissions** are an important driver to **deforestation**, as it predicts **deforestation** relatively well by itself. Lastly, we experienced large MAE and RMSE values compared to the usual cases due to large values in our predicting variable, deforestation in ha. We explained the metric values in relation to all values, 
+
+Best Model = Deforestation ~ carbon emissions + meat production + forestry production in volume + forestry production in ton + urban population + urban population percentage + I(carbon emissions*meat production) + I(carbon emissions*urban population)
+
+
+# CONCLUSION
+
+Our project investigates global deforestation and its quality of life from two perspectives: 1. How could we better predict deforestation across countries, using predictors related to human activities? 2. How does deforestation impact life expectancy? We found that using predictors of **Co2 emissions**, **Meat Production**, **Forestry Production in Ton**, **Forestry Production in Volume**, **Urban Population**, **Urban Population Percentage**, and two interaction terms between **Co2 emissions** and **Meat Production**, and **Co2 emissions** and **Urban Population** best-predicting deforestation. As discussed in the response, we believe interactions between human activity factors contribute to accurately predicting deforestation. In addition, CO2 emissions are another important driver of deforestation, in that it not only did relatively well in predicting deforestation, but the interaction between CO2 and population expansion also proved effective in improving the accuracy of building our model. In finding the direct impact of deforestation on life quality, although we couldn’t conclude a clear and general relationship based on our data, we could see some consequences when deforestation increases, and life expectancy decreases in countries like Brazil in a short period.
+
+We believe our project is a useful tool and information guide for a general audience who is interested in learning how deforestation is perpetuated and its potential impacts on humans. It is a simple and great source to educate the general public about the formation and  consequences of deforestation and inspire awareness and actions to advocate changes in real life. As we researched deforestation in this project, we realized that many literary sources are academic and professional and are not accessible to audiences without related backgrounds. Thus, our project significantly bridges the gaps in providing informative, relevant, and concise information for all. We suggest users read through our interactive graphs and play with the models we made with their datasets, and further dialogues are certainly encouraged. 
+
+Critically analyzing the results in our response on both parts, we discussed the reasons and improvements to further improve our analysis results. To even elevate the accuracy in our prediction model, we could incorporate other human activity variables, such as specific industry production factors (e.g. mining), specific pollutants, and emission gasses. Despite the weak relationship between deforestation and quality of life using our current dataset, we believe further breaking down indicators related to human life and quality life would help us to see the relationship clearer. As life expectancy naturally takes longer for life expectancy to change from external factors such as deforestation, we could merge more datasets that break down life expectancy to specific diseases and aggregated indicators. We wished we could access world-wide flooding in building models, which might add climate change related factors in our modeling. At last, we wished to access more in-depth knowledge about a wider variety of model transformation methods to increase the accuracy in modeling.
+
+
