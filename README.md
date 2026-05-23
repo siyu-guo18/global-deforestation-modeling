@@ -1,4 +1,4 @@
-# global-deforestation-modeling
+# Global Deforestation Modeling Project
 This project analyzes global deforestation datasets using regression modeling and exploratory data analysis in R to evaluate environmental and socioeconomic trends.
 
 ## Methods
