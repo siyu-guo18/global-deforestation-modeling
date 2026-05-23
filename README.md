@@ -1,2 +1,14 @@
 # global-deforestation-modeling
-Collaborative R-based statistical modeling project analyzing global deforestation and environmental trends through web scraping, regression modeling, data visualization, and model selection. Focused on developing interpretable forecast models and translating quantitative findings into clear analytical insights.
+This project analyzes global deforestation datasets using regression modeling and exploratory data analysis in R to evaluate environmental and socioeconomic trends.
+
+## Methods
+- Multiple linear regression
+- Data visualization
+- Exploratory analysis
+- Forecasting-oriented trend analysis
+
+## Tools
+- R
+- tidyverse
+- ggplot2
+- Kaggle
